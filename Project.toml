@@ -1,0 +1,48 @@
+# Copyright 2026 Quantum Motion Technologies Limited
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name = "MPSCircuits"
+uuid = "4dc1aaa1-ff9f-4b60-91b2-e731a2d18fd4"
+version = "0.1.0"
+authors = ["Matt Sims-Goh <matt.sims-goh@quantummotion.tech>"]
+
+[deps]
+HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
+ITensorMPS = "0d1a4710-d33b-49a5-8f18-73bdf49b47e2"
+ITensors = "9136182c-28ba-11e9-034c-db9fb085ebd5"
+JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
+[weakdeps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+
+[extensions]
+MPSCircuitsCUDA = "CUDA"
+
+[compat]
+julia = "1.12"
+CUDA = "5.11.2"
+HDF5 = "0.17.3"
+ITensorMPS = "0.3.45"
+ITensors = "0.9.25"
+JSON3 = "1.14.3"
+LinearAlgebra = "1.12.0"
+Random = "1.11.0"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
