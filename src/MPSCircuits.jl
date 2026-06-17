@@ -36,9 +36,9 @@ include("export.jl")
 
 module Chemistry
 
-# export fcidump_to_mpo
-# export store_mps
-# export load_mps
+export fcidump_to_mpo
+export store_mps
+export load_mps
 
 include("chemistry.jl")
 
