@@ -2,7 +2,7 @@
 
 MPSCircuits.jl is a Julia package for compiling matrix product states (MPS) into quantum state-preparation circuits.
 
-The package is designed for workflows where a classical tensor-network state serves as an input for downstream quantum algorithms, e.g. preparing high-quality guide state for downstream quantum algorithms or data-loading for quantum machine learning.
+The package is designed for workflows where a classical tensor-network state serves as an input for downstream quantum algorithms, e.g. preparing high-quality guide states for QPE or data-loading for quantum machine learning.
 
 ## Features
 
