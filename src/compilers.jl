@@ -1,17 +1,3 @@
-# Copyright 2026 Quantum Motion Technologies Limited
-# 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 abstract type AbstractCompilerProtocol end
 struct DecomposeAllAnalytical <: AbstractCompilerProtocol end
 struct IterativeDecomposeOptimizeLayer <: AbstractCompilerProtocol end
@@ -71,6 +57,49 @@ function compile_mps_circuit(
 
     return preparation_circuit
 end
+
+#=
+"""
+    compile_mps_circuit(mps::ITensorMPS.MPS, protocol::DecomposeAllAnalytical; n_layers_max::Int, tolerance::Float64=1e-12, max_bond_dim::Int=ITensorMPS.maxlinkdim(mps))
+
+Extract a preparation circuit from an MPS by analytic disentangling and layer optimization.
+This adds new layers and optimizes them one at a time.
+This is the `Iter[D_i O_i]` procedure from arXiv:2209.00595. It isn't very good!
+
+N.B.: This has been deprecated as it simply isn't very performant.
+"""
+function compile_mps_circuit(
+    mps::ITensorMPS.MPS,
+    protocol::IterativeDecomposeOptimizeLayer;
+    n_layers_max::Int,
+    n_iterations_per_layer::Int=10,
+    tolerance::Float64=1e-8,
+    max_bond_dim::Int=2 * ITensorMPS.maxlinkdim(mps),
+    working_cutoff::Float64=1e-12
+)
+    mps_clean = ITensorMPS.dense(mps) # strip out the QN stuff if a fermionic state is supplied
+    mps_work = deepcopy(mps_clean)
+    preparation_circuit = UnitaryGate[] # blank array to hold the gates as we extract them
+
+    # Loop over layers: each one truncates to χ=2, extracts a layer, applies the inverse to the working MPS, and records the circuit layer.
+    for layer in 1:n_layers_max
+        mps_work, entangling_layer, flag_disentangled = generate_layer!(mps_work; tolerance=tolerance, layer_number=layer, max_bond_dim=max_bond_dim, working_cutoff=working_cutoff)
+        if flag_disentangled
+            product_state_truncation_fidelity = apply_single_qubit_rotations!(preparation_circuit, mps_work)
+            break # if we've already disentangled to χ=1, exit this loop
+        else
+            prepend!(preparation_circuit, entangling_layer) # record the layer in the circuit
+            # N.B.: we apply the single-qubit rotations here because we need to do optimization after w.r.t. fidelity
+            product_state_truncation_fidelity = apply_single_qubit_rotations!(preparation_circuit, mps_work)
+            for iteration in 1:n_iterations_per_layer
+                replace_gates!(mps_clean, preparation_circuit, 1:(length(mps)-1), max_bond_dim=max_bond_dim, working_cutoff=working_cutoff) # optimize the first layer w.r.t. fidelity after each layer is added
+            end
+        end
+    end
+
+    return preparation_circuit
+end
+=#
 
 """
     compile_mps_circuit(mps::ITensorMPS.MPS, protocol::DecomposeAllAnalytical; n_layers_max::Int, tolerance::Float64=1e-12, max_bond_dim::Int=ITensorMPS.maxlinkdim(mps))
@@ -215,3 +244,7 @@ function refine_mps_circuit(
 
     return refined_circuit
 end
+
+
+# TODO: Implement Floyd's variational recompression approach?
+# TODO: Implement Bohun-style CNOT saving approach

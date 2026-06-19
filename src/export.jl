@@ -1,24 +1,6 @@
-# Copyright 2026 Quantum Motion Technologies Limited
-# 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import JSON3
 
-"""
-    gate_SU2_to_dicts(gate_su2::SU2Gate)
-
-Converts an SU(2) gate to a list of dictionaries representing the Rz, Ry, Rz rotations for the Euler decomposition.
-"""
+# TODO docstring
 function gate_SU2_to_dicts(gate_su2::SU2Gate)
     rz_1 = Dict(
         "op" => "Rz",
@@ -38,11 +20,7 @@ function gate_SU2_to_dicts(gate_su2::SU2Gate)
     return [rz_1, ry_1, rz_2]
 end
 
-"""
-    gate_KAK_core_to_dicts(kak_core::KAKCore)
-
-Converts a KAK core gate (Weyl chamber) to a list of dictionaries representing the CNOTs and Ry/Rz gates for its standard decomposition.
-"""
+# TODO docstring
 function gate_KAK_core_to_dicts(kak_core::KAKCore)
     cnot_1 = Dict(
         "op" => "CNOT",
@@ -77,11 +55,7 @@ function gate_KAK_core_to_dicts(kak_core::KAKCore)
     return [cnot_1, rz_1, ry_1, cnot_2, ry_2, cnot_3]
 end
 
-"""
-    gate_KAK_SU4_to_dicts(kak_gate::KAKGateSU4)
-
-Converts a KAK-decomposed SU(4) gate to a list of dictionaries representing the core and SU(2) boundary gates for its standard decomposition.
-"""
+# TODO docstring
 function gate_KAK_SU4_to_dicts(kak_gate::KAKGateSU4)
     dicts = []
     append!(dicts, gate_SU2_to_dicts(kak_gate.A_R1))
@@ -93,12 +67,7 @@ function gate_KAK_SU4_to_dicts(kak_gate::KAKGateSU4)
 end
 
 
-"""
-    circuit_to_ops_array(circuit::Vector{<:AbstractGate})
-
-Converts a circuit (vector of AbstractGate) to an array of dictionaries representing the operations in the circuit.
-Calls dedicated subroutines for each implemented gate type, ultimately all via a Cartan KAK decomposition to CNOT/Ry/Rz gate-set.
-"""
+# Returns the circuit operations as an array of Dicts
 function circuit_to_ops_array(circuit::Vector{<:AbstractGate})
     circuit_ops_array = []
     for gate in circuit
@@ -130,11 +99,7 @@ function circuit_to_ops_array(circuit::Vector{<:AbstractGate})
     return circuit_ops_array, num_qubits
 end
 
-"""
-    write_circuit_json(circuit::Vector{<:AbstractGate}, filename::String)
-
-Writes a circuit (vector of AbstractGate) to a JSON file with the given filename. 
-"""
+# Writes the circuit operations and metadata to a JSON file
 function write_circuit_json(circuit::Vector{<:AbstractGate}, filename::String)
     circuit_ops_array, num_qubits = circuit_to_ops_array(circuit)
     json_data = Dict(

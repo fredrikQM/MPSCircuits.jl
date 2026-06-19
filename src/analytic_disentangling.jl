@@ -1,17 +1,3 @@
-# Copyright 2026 Quantum Motion Technologies Limited
-# 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """
     head_tensor_gate(mps::ITensorMPS.MPS)
 
@@ -270,3 +256,6 @@ function generate_layer!(
     end
     return mps, entangling_layer, flag_disentangled
 end
+
+# TODO: Add a Colbeck decomposition method for converting isometries to unitaries.
+# Will also require a Gate format for storing both matrices and internal representation in decomposed form.

@@ -1,17 +1,3 @@
-# Copyright 2026 Quantum Motion Technologies Limited
-# 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 abstract type AbstractGate end
 struct DummyGate <: AbstractGate end
 
@@ -82,6 +68,15 @@ Return the adjoint gate: conjugated and transposed (i.e. prime level swapped)
 function dagger(gate::AbstractGate)
     return UnitaryGate(ITensors.swapprime(ITensors.dag(tensor(gate)), 0 => 1), gate.site_numbers, gate.site_indices)
 end
+
+function _validate_mixed_device_policy(policy::Symbol)
+    if policy in (:error, :coerce)
+        return policy
+    end
+    throw(ArgumentError("Unknown mixed_device policy: $(policy). Expected one of :error, :coerce."))
+end
+
+_backend_label(backend) = backend == BackendGPU ? "GPU" : "CPU"
 
 """
     apply_gate(gate::AbstractGate, mps::ITensorMPS.MPS; mixed_device::Symbol=:error, conversion_precision::Symbol=:preserve, kwargs...)
@@ -163,25 +158,14 @@ end
 
 struct ZYZ <: EulerSequence end
 
-"""
-    SU2Gate{ZYZ}(tensor::ITensors.ITensor, site_numbers::Vector{Int}, site_indices::Vector{<:ITensors.Index})
-
-Construct a single-qubit `SU2Gate{ZYZ}` from an ITensor and metadata.
-The ZYZ Euler angles are extracted from the underlying 2x2 matrix and stored
-on the returned gate for downstream transpilation.
-"""
+# TODO docstring
 function SU2Gate{ZYZ}(tensor::ITensors.ITensor, site_numbers::Vector{Int}, site_indices::Vector{<:ITensors.Index})
     gate_matrix = ITensors.array(tensor, ITensors.prime(site_indices[1]), site_indices[1])
     theta_1, theta_2, theta_3 = zyz_decomposition(gate_matrix)
     return SU2Gate{ZYZ}(tensor, site_numbers, site_indices, theta_1, theta_2, theta_3)
 end
 
-"""
-    SU2Gate{ZYZ}(gate::UnitaryGate)
-
-Convert a `UnitaryGate` into an `SU2Gate{ZYZ}` by decomposing it into ZYZ Euler
-angles. The input must act on exactly one site.
-"""
+# TODO docstring
 function SU2Gate{ZYZ}(gate::UnitaryGate)
     if length(gate.site_numbers) != 1
         throw(ArgumentError("SU(2) decomposition only possible for single-qubit gates, but input gate acts on $(length(gate.site_numbers)) qubits."))
@@ -192,12 +176,7 @@ end
 # Identity conversion: if it's already a ZYZ SU(2) gate, return it unchanged.
 SU2Gate{ZYZ}(gate::SU2Gate{ZYZ}) = gate
 
-"""
-    SU2Gate{ZYZ}(theta_1::Real, theta_2::Real, theta_3::Real, site_numbers::Vector{Int}, site_indices::Vector{<:ITensors.Index})
-
-Construct a single-qubit `SU2Gate{ZYZ}` directly from ZYZ Euler angles and site
-metadata. This builds the corresponding 2x2 unitary and wraps it as an ITensor.
-"""
+# TODO docstring
 function SU2Gate{ZYZ}(theta_1::Real, theta_2::Real, theta_3::Real, site_numbers::Vector{Int}, site_indices::Vector{<:ITensors.Index})
     # precompute amplitudes
     c2 = cos(theta_2 / 2.0)
@@ -227,11 +206,7 @@ function SU2Gate{Seq}(
 
 
 
-"""
-    KAKCore
-
-Entangling core (Weyl chamber) of a Cartan KAK decomposition, can be represented as 3 CNOTs and 3 single-qubit rotations.
-"""
+# TODO docstring
 struct KAKCore <: AbstractGate
     tensor::ITensors.ITensor
     site_numbers::Vector{Int}
@@ -241,11 +216,7 @@ struct KAKCore <: AbstractGate
     gamma::Float64
 end
 
-"""
-    KAKCore(site_numbers::Vector{Int}, site_indices::Vector{<:ITensors.Index}, alpha::Real, beta::Real, gamma::Real)
-
-Initializer for a KAK entangling core from the angles.
-"""
+# TODO: Compare, in a test, the tensor generated here versus the input one used to generate alpha/beta/gamma
 function KAKCore(site_numbers::Vector{Int}, site_indices::Vector{<:ITensors.Index}, alpha::Real, beta::Real, gamma::Real)
     # Apply the rotations from Vatan (arXiv:quant-ph/0308006), Figure 6. N.B.: our Rz and Ry are reversed, so angle signs are flipped. Our convention follows e.g. Qiskit.
     rot_1 = LinearAlgebra.kron(Rz(-2 * gamma + pi / 2), Ry(-pi / 2 + 2 * alpha))
@@ -258,11 +229,7 @@ end
 
 
 
-"""
-    KAKGateSU4
-
-Representation of a two-qubit gate in Cartan KAK-decomposed form.
-"""
+# TODO docstring
 struct KAKGateSU4 <: AbstractGate
     tensor::ITensors.ITensor
     site_numbers::Vector{Int}
@@ -274,11 +241,7 @@ struct KAKGateSU4 <: AbstractGate
     A_R2::SU2Gate{ZYZ}
 end
 
-"""
-    KAKGateSU4(input_gate::UnitaryGate)
-
-Perform a Cartan KAK decomposition of a two-qubit `UnitaryGate` and output a `KAKGateSU4`.
-"""
+# TODO docstring, generate a KAK gate from its input tensor
 function KAKGateSU4(
     input_gate::UnitaryGate
 )
@@ -306,3 +269,6 @@ function KAKGateSU4(
     su4_tensor = ITensors.apply(tensor(gate_A_L2), su4_tensor)
     return KAKGateSU4(su4_tensor, site_numbers, site_indices, core, gate_A_L1, gate_A_L2, gate_A_R1, gate_A_R2)
 end
+
+
+# TODO: direct product for two SU(2) gates, from the angles?

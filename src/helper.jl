@@ -1,17 +1,3 @@
-# Copyright 2026 Quantum Motion Technologies Limited
-# 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 # Magic basis: following convention of Tucci's paper (arXiv:quant-ph/0507171), which differs from Vatan's (arXiv:quant-ph/0308006).
 const M_magic = 1 / √2 * [
     1 0 0 im
@@ -65,7 +51,7 @@ function full_positive_qr(matrix::AbstractMatrix)
     R_thin = F.R # 'thin' R
     #Force R to be positive so that it doesn't mess up the phases
     diag_signs = sign.(LinearAlgebra.diag(R_thin))
-    diag_signs[diag_signs .== 0] .= 1.0 # Handle zero entries by treating them as positive, I think there shouldn't be any anyway
+    diag_signs[diag_signs.==0] .= 1.0 # Handle zero entries by treating them as positive, I think there shouldn't be any anyway
     Q_full[:, 1:length(diag_signs)] .*= diag_signs' # only map onto the image cols
 
     return Q_full
@@ -106,7 +92,7 @@ function evaluate_circuit_fidelity(
 
     overlap = ITensorMPS.inner(bra_work, psi0)
 
-    return abs2(overlap) / abs(ITensorMPS.inner(mps_work, mps_work))
+    return abs2(overlap) / ITensorMPS.inner(mps_work, mps_work)
 end
 
 """
@@ -195,10 +181,10 @@ function cartan_KAK_decomposition(X::AbstractMatrix)
     end
     # SVD the H-block (Tucci, Eq. 25)
     if r < 4
-        H = B_prime[(r+1):end, (r+1):end]
+        H = B_prime[r+1:end, r+1:end]
         svd_H = LinearAlgebra.svd(H)
-        U_inner[(r+1):end, (r+1):end] = svd_H.U
-        V_inner[(r+1):end, (r+1):end] = svd_H.Vt'
+        U_inner[r+1:end, r+1:end] = svd_H.U
+        V_inner[r+1:end, r+1:end] = svd_H.Vt'
     end
     # Final orthogonal matrices per Tucci Eq. 26
     Q_L = U_A * U_inner
@@ -229,30 +215,4 @@ function cartan_KAK_decomposition(X::AbstractMatrix)
     A_R2 = Rz(-π / 2) * A_R2
     A_L1 = A_L1 * Rz(π / 2)
     return α, β, γ, A_L1, A_L2, A_R1, A_R2
-end
-
-"""
-    build_random_mps(N::Int, chi_target::Int; seed::Int=1234, backend::Symbol=:cpu, precision::Symbol=:preserve)
-
-Build a random MPS with `N` sites and bond dimension `chi_target` for testing purposes.
-Use `backend=:gpu` to place the output MPS on GPU before returning.
-`precision` controls numeric casting during backend transfer (`:fp32`, `:fp64`, or `:preserve`).
-"""
-function build_random_mps(N::Int, chi_target::Int; seed::Int=1234, backend::Symbol=:cpu, precision::Symbol=:preserve)
-    sites = ITensorMPS.siteinds("S=1/2", N)
-    Random.seed!(seed + chi_target)
-    mps = ITensorMPS.random_mps(sites; linkdims=chi_target)
-
-    requested_backend = backend_from_symbol(backend)
-    resolved_backend = if requested_backend == BackendAuto
-        resolve_backend(BackendConfig(; backend=BackendAuto, gpu_fallback=true))
-    elseif requested_backend == BackendGPU
-        resolve_backend(BackendConfig(; backend=BackendGPU, gpu_fallback=false))
-    else
-        BackendCPU
-    end
-
-    output_mps = to_backend(mps, resolved_backend; precision=precision)
-    ITensorMPS.truncate!(output_mps, cutoff=1e-12)
-    return output_mps
 end

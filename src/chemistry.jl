@@ -1,17 +1,3 @@
-# Copyright 2026 Quantum Motion Technologies Limited
-# 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import ITensors
 import ITensorMPS
 import HDF5
@@ -147,6 +133,46 @@ function fcidump_to_mpo(
     H = ITensorMPS.MPO(hamiltonian, s)
 
     return H, s, init_state
+end
+
+"""
+    opt_mps(H::ITensorMPS.MPO, psi0::ITensorMPS.MPS; nsweeps::Int64=10, maxdim::Int64=100, cutoff::Float64=1e-8, truncation::Float64=1e-8)
+
+Run DMRG on the given MPO with an initial MPS guess, using the specified convergence paramters, and return the optimized state.
+The routine also truncates the resulting MPS and verifies the truncated energy before returning.
+"""
+function opt_mps(
+    H::ITensorMPS.MPO,
+    psi0::ITensorMPS.MPS;
+    nsweeps::Int64=10,
+    maxdim::Int64=100,
+    cutoff::Float64=1e-8,
+    truncation::Float64=1e-8,
+)
+    energy, psi = ITensorMPS.dmrg(
+        H,
+        psi0;
+        nsweeps=nsweeps,
+        maxdim=maxdim,
+        cutoff=cutoff,
+        eigsolve_krylovdim=10,
+        noise=1e-8,
+        eigsolve_tol=1e-8,
+    )
+    println("Final energy = ", energy)
+    println("Bond dimensions before truncation:", ITensorMPS.linkdims(psi))
+
+    psi_trunc = ITensorMPS.truncate(psi, cutoff=truncation)
+    energy_truncated = ITensorMPS.inner(psi_trunc', H, psi_trunc)
+    println("Truncated energy = ", energy_truncated)
+
+    if abs(energy_truncated - energy) > 1.6e-3
+        println("Truncated energy differs too much, returning full MPS.")
+        return energy, psi
+    end
+
+    println("Returning truncated MPS.")
+    return energy_truncated, psi_trunc
 end
 
 """

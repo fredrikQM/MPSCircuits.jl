@@ -1,17 +1,3 @@
-# Copyright 2026 Quantum Motion Technologies Limited
-# 
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 abstract type AbstractProcrustesProtocol end
 struct FullRebuild <: AbstractProcrustesProtocol end
 struct RollingEnvironment <: AbstractProcrustesProtocol end
@@ -90,13 +76,13 @@ function environment_tensor(
     initial_state = ["0" for _ in 1:length(sites)]
     ket = ITensorMPS.MPS(sites, initial_state)
     ket = to_backend(ket, backend_of(mps); precision=_mps_precision_symbol(mps))
-    for gate in circuit[1:(gate_index-1)]
+    for gate in circuit[1:gate_index-1]
         ket = apply_gate(gate, ket; mixed_device=:coerce, conversion_precision=:preserve, cutoff=working_cutoff, maxdim=max_bond_dim)
     end
 
     # take the end of circuit, apply it left to working MPS (bra)
     bra = deepcopy(mps)
-    for gate in circuit[end:-1:(gate_index+1)]
+    for gate in circuit[end:-1:gate_index+1]
         bra = apply_gate(dagger(gate), bra; mixed_device=:coerce, conversion_precision=:preserve, cutoff=working_cutoff, maxdim=max_bond_dim)
     end
 
@@ -104,12 +90,7 @@ function environment_tensor(
     return environment, ket, bra
 end
 
-"""
-    next_environment!(circuit::Vector{UnitaryGate}, next_position::Int, ket::ITensorMPS.MPS, bra::ITensorMPS.MPS, protocol::RollingEnvironment; max_bond_dim::Int, working_cutoff::Float64=1e-12)
-
-Replace the gates at `gate_indices` in `circuit` with new optimal gates computed from their environments, i.e. Procrustes optimization.
-This is the "telescoping environment" protocol where we store partial contractions in memory. It saves on contractions and should match FullRebuild in accuracy, but uses much more memory.
-"""
+# TODO docstring
 function environment_tensor(
     mps::ITensorMPS.MPS,
     circuit::Vector{UnitaryGate},
@@ -126,7 +107,7 @@ function environment_tensor(
     initial_state = ["0" for _ in 1:length(sites)]
     ket = ITensorMPS.MPS(sites, initial_state)
     ket = to_backend(ket, backend_of(mps); precision=_mps_precision_symbol(mps))
-    for gate in circuit[1:(gate_index-1)]
+    for gate in circuit[1:gate_index-1]
         ket = apply_gate(gate, ket; mixed_device=:coerce, conversion_precision=:preserve, cutoff=working_cutoff, maxdim=max_bond_dim)
     end
 
@@ -134,7 +115,7 @@ function environment_tensor(
     cached_bras = ITensorMPS.MPS[]
     current_bra = deepcopy(mps)
     push!(cached_bras, current_bra)
-    for gate in circuit[end:-1:(gate_index+1)]
+    for gate in circuit[end:-1:gate_index+1]
         current_bra = apply_gate(dagger(gate), current_bra; mixed_device=:coerce, conversion_precision=:preserve, cutoff=working_cutoff, maxdim=max_bond_dim)
         push!(cached_bras, current_bra)
     end
@@ -164,12 +145,7 @@ function next_environment!(
     return environment, ket, bra
 end
 
-"""
-    next_environment!(circuit::Vector{UnitaryGate}, next_position::Int, ket::ITensorMPS.MPS, next_bra::ITensorMPS.MPS, protocol::TelescopingEnvironment; max_bond_dim::Int, working_cutoff::Float64=1e-12)
-
-Given the current environment for `circuit[next_position-1]`, compute the next environment for `circuit[next_position]`.
-This is used for the telescoping environment protocol, where we reuse the partially contracted ket and update it, but re-use cached bras.
-"""
+# TODO docstring
 function next_environment!(
     circuit::Vector{UnitaryGate},
     next_position::Int,
@@ -198,7 +174,12 @@ function new_optimal_gate(
     environment_array = to_tiny_kernel_cpu(environment_array)
     environment_matrix = reshape(environment_array, 4, 4)
     F = LinearAlgebra.svd(environment_matrix)
-    gate_array = reshape(F.U * F.Vt, 2, 2, 2, 2)
+    # The fidelity amplitude is A = Σ G[o,i] E[o,i] (G and the environment E share the
+    # same (out, in) index layout), so |A| is maximised over unitary G by the *conjugate*
+    # of the environment's polar factor: G = conj(U Vᵀ), where E = U Σ Vᵀ. Without the
+    # conjugation the sweep converges to a wrong, sub-optimal fixed point (it cannot even
+    # reach F=1 on a single-gate, exactly-representable target).
+    gate_array = reshape(conj(F.U * F.Vt), 2, 2, 2, 2)
 
     new_gate = ITensors.itensor(gate_array, ITensors.prime(site_indices[1]), ITensors.prime(site_indices[2]), site_indices[1], site_indices[2])
     return UnitaryGate(new_gate)
@@ -307,7 +288,7 @@ function replace_gates!(
     # Start at first gate. This also collects the telescoping list of cached bras.
     environment, ket, cached_bras = environment_tensor(mps, circuit, TelescopingEnvironment(); gate_index=gate_indices[1], max_bond_dim=max_bond_dim, working_cutoff=working_cutoff)
     circuit[gate_indices[1]] = to_backend(new_optimal_gate(environment, circuit[gate_indices[1]].site_indices), backend_of(mps); precision=:preserve)
-    record_progress_opt_step!(progress; layer=layer_number, iter_in_layer=iteration_index, iter_total_for_layer=n_iterations_total, gate_index=gate_indices[1], gate_count=gate_count, gate_step_in_iteration=gate_step_in_iteration, ket_maxlinkdim=ITensorMPS.maxlinkdim(ket), bra_maxlinkdim=ITensorMPS.maxlinkdim(cached_bras[length(circuit)-gate_indices[1]+1]), env_norm=_optional_env_norm(environment, progress))
+    record_progress_opt_step!(progress; layer=layer_number, iter_in_layer=iteration_index, iter_total_for_layer=n_iterations_total, gate_index=gate_indices[1], gate_count=gate_count, gate_step_in_iteration=gate_step_in_iteration, ket_maxlinkdim=ITensorMPS.maxlinkdim(ket), bra_maxlinkdim=ITensorMPS.maxlinkdim(cached_bras[length(circuit) - gate_indices[1] + 1]), env_norm=_optional_env_norm(environment, progress))
     # Now iterate over remaining gates. cached_bras are stored in contraction order:
     # cached_bras[k] corresponds to applying daggers of circuit[end], ..., circuit[end-k+2] to mps.
     for gate_index in gate_indices[2:end]
@@ -322,3 +303,5 @@ function replace_gates!(
     end
     return nothing
 end
+
+# TODO: bra-reuse / telescoping version.
