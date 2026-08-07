@@ -347,3 +347,46 @@ end
     fidelity = MPSCircuits.evaluate_circuit_fidelity(circuit, mps; cutoff=1e-12)
     @test fidelity > 0.99
 end
+
+@testset "Procrustes Complex Environment Conjugation" begin
+    # The gate enters the fidelity network linearly (no conjugate), so the maximizer of the linear
+    # objective Re(sum(G .* E)) is conj(U*Vt), NOT the standard orthogonal-Procrustes result U*Vt.
+    # On a genuinely complex environment the two diverge; only the conjugated form attains the
+    # theoretical maximum sum(svdvals(E)). This is a no-op on real environments (regression-safe).
+    # Use properly tagged site indices (n=X) so the UnitaryGate constructor can infer site numbers.
+    sites = siteinds("S=1/2", 2)
+    s1, s2 = sites[1], sites[2]
+
+    # A fixed, genuinely complex 4x4 environment matrix (no RNG dependency for reproducibility).
+    Emat = ComplexF64[
+        1.0+0.3im    0.2-0.5im   -0.4+0.1im    0.7+0.2im
+        -0.3+0.8im   0.9+0.1im    0.5-0.6im   -0.2+0.4im
+        0.6-0.2im   -0.7+0.3im    0.8+0.5im    0.1-0.9im
+        0.4+0.6im    0.3-0.1im   -0.5+0.7im    1.1-0.4im
+    ]
+
+    # Wrap as an ITensor with the exact index ordering new_optimal_gate reads: (s1', s2', s1, s2).
+    E = ITensors.itensor(reshape(Emat, 2, 2, 2, 2), ITensors.prime(s1), ITensors.prime(s2), s1, s2)
+
+    gate = MPSCircuits.new_optimal_gate(E, [s1, s2])
+    Gmat = reshape(
+        ITensors.array(MPSCircuits.tensor(gate), ITensors.prime(s1), ITensors.prime(s2), s1, s2),
+        4, 4,
+    )
+
+    # Linear fidelity objective: contract the gate into the environment (elementwise on matching indices).
+    overlap = sum(Gmat .* Emat)
+    max_overlap = sum(LinearAlgebra.svdvals(Emat))
+
+    # Conjugated solution: real, non-negative, and attains the theoretical maximum.
+    @test isapprox(imag(overlap), 0.0; atol=1e-10)
+    @test isapprox(real(overlap), max_overlap; rtol=1e-8)
+
+    # The unconjugated (buggy) maximizer is strictly worse on this complex environment.
+    F = LinearAlgebra.svd(Emat)
+    overlap_bug = sum((F.U * F.Vt) .* Emat)
+    @test real(overlap_bug) < real(overlap) - 1e-6
+
+    # The returned gate is still unitary.
+    @test isapprox(Gmat * Gmat', Matrix(LinearAlgebra.I, 4, 4); atol=1e-10)
+end

@@ -198,7 +198,7 @@ function new_optimal_gate(
     environment_array = to_tiny_kernel_cpu(environment_array)
     environment_matrix = reshape(environment_array, 4, 4)
     F = LinearAlgebra.svd(environment_matrix)
-    gate_array = reshape(F.U * F.Vt, 2, 2, 2, 2)
+    gate_array = reshape(conj(F.U * F.Vt), 2, 2, 2, 2) # conj necessary for complex-valued environments, due to E^T convention
 
     new_gate = ITensors.itensor(gate_array, ITensors.prime(site_indices[1]), ITensors.prime(site_indices[2]), site_indices[1], site_indices[2])
     return UnitaryGate(new_gate)
