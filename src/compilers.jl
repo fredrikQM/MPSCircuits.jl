@@ -140,6 +140,12 @@ function compile_mps_circuit(
                     n_iterations_total=n_iterations_per_layer,
                 ) # optimize all gates in the circuit w.r.t. fidelity after each layer is added
             end
+            # Re-integrate the optimized gates: the next layer is decomposed from the CURRENT circuit's effective working MPS.
+            mps_work = apply_circuit(
+                reverse(dagger.(preparation_circuit)), deepcopy(mps_clean);
+                mixed_device=:coerce, conversion_precision=:preserve,
+                cutoff=working_cutoff, maxdim=max_bond_dim,
+            )
             record_progress_layer_done!(progress; layer=layer, circuit_len=length(preparation_circuit), layer_elapsed_s=time() - layer_t_start)
         end
     end

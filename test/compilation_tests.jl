@@ -390,3 +390,37 @@ end
     # The returned gate is still unitary.
     @test isapprox(Gmat * Gmat', Matrix(LinearAlgebra.I, 4, 4); atol=1e-10)
 end
+
+@testset "Iterative Compiler Rebuilds Working MPS" begin
+    # Fix 1: after the per-layer Procrustes sweeps, mps_work is rebuilt from the full optimized
+    # circuit so the next layer is decomposed from the CURRENT residual, not the stale greedy peel
+    # (Rudolph Iter[D_iO_all], arXiv:2209.00595). Locked in via two paper-consistent properties on a
+    # well-converged Heisenberg ground state:
+    #   (a) adding + optimizing a layer never reduces fidelity;
+    #   (b) the iterative-optimize compiler beats the pure analytical decomposition at equal depth.
+    N = 10
+    sites = siteinds("S=1/2", N; conserve_qns=true)
+    os = OpSum()
+    for j in 1:(N-1)
+        os += 0.5, "S+", j, "S-", j + 1
+        os += 0.5, "S-", j, "S+", j + 1
+        os += 1.0, "Sz", j, "Sz", j + 1
+    end
+    H = MPO(os, sites)
+    psi_init = MPS(sites, [isodd(n) ? "Up" : "Dn" for n in 1:N])
+    _, mps = dmrg(H, psi_init; nsweeps=8, maxdim=[10, 20, 60], cutoff=[1e-12], outputlevel=0)
+
+    opt_depth2 = MPSCircuits.compile_mps_circuit(mps, MPSCircuits.IterativeDecomposeOptimizeAll(); n_layers_max=2, n_iterations_per_layer=10, tolerance=1e-10, precision=:fp64, backend=:cpu)
+    opt_depth3 = MPSCircuits.compile_mps_circuit(mps, MPSCircuits.IterativeDecomposeOptimizeAll(); n_layers_max=3, n_iterations_per_layer=10, tolerance=1e-10, precision=:fp64, backend=:cpu)
+    fid_opt2 = MPSCircuits.evaluate_circuit_fidelity(opt_depth2, mps; cutoff=1e-12)
+    fid_opt3 = MPSCircuits.evaluate_circuit_fidelity(opt_depth3, mps; cutoff=1e-12)
+
+    # (a) deeper optimized circuit is at least as good (the rebuild keeps layers consistent).
+    @test fid_opt3 >= fid_opt2 - 1e-9
+
+    # (b) iterative optimization (with the rebuilt working MPS) beats pure analytical decomposition
+    #     at equal depth.
+    greedy_depth2 = MPSCircuits.compile_mps_circuit(mps, MPSCircuits.DecomposeAllAnalytical(); n_layers_max=2, tolerance=1e-10, precision=:fp64, backend=:cpu)
+    fid_greedy2 = MPSCircuits.evaluate_circuit_fidelity(greedy_depth2, mps; cutoff=1e-12)
+    @test fid_opt2 > fid_greedy2
+end
