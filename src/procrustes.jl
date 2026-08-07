@@ -174,12 +174,7 @@ function new_optimal_gate(
     environment_array = to_tiny_kernel_cpu(environment_array)
     environment_matrix = reshape(environment_array, 4, 4)
     F = LinearAlgebra.svd(environment_matrix)
-    # The fidelity amplitude is A = Σ G[o,i] E[o,i] (G and the environment E share the
-    # same (out, in) index layout), so |A| is maximised over unitary G by the *conjugate*
-    # of the environment's polar factor: G = conj(U Vᵀ), where E = U Σ Vᵀ. Without the
-    # conjugation the sweep converges to a wrong, sub-optimal fixed point (it cannot even
-    # reach F=1 on a single-gate, exactly-representable target).
-    gate_array = reshape(conj(F.U * F.Vt), 2, 2, 2, 2)
+    gate_array = reshape(conj(F.U * F.Vt), 2, 2, 2, 2) # conj necessary for complex-valued environments, due to E^T convention
 
     new_gate = ITensors.itensor(gate_array, ITensors.prime(site_indices[1]), ITensors.prime(site_indices[2]), site_indices[1], site_indices[2])
     return UnitaryGate(new_gate)
