@@ -37,13 +37,54 @@ function gate_tensor_indices(gate_tensor::ITensors.ITensor)
     return site_numbers[perm], unprimed_inds[perm]
 end
 
+"""Array wrapper backing a gate tensor's storage: `Array`, `CuArray`, `JLArray`, …
+
+Deliberately *not* `backend_of`/`is_gpu_array`: those answer `BackendCPU` for any
+device whose MPSCircuits extension is not loaded, so they cannot separate a host
+tensor from a device one off the CUDA path — including in tests. The storage
+wrapper is the property that actually decides whether ITensors has a contraction
+method for the pair.
+"""
+_storage_wrapper(gate_tensor::ITensors.ITensor) =
+    Base.typename(typeof(ITensors.array(gate_tensor, ITensors.inds(gate_tensor)...))).wrapper
+
+"""Host copy of a gate tensor, whatever device array backs it."""
+function _to_host_tensor(gate_tensor::ITensors.ITensor)
+    indices = ITensors.inds(gate_tensor)
+    return ITensors.itensor(Array(ITensors.array(gate_tensor, indices...)), indices...)
+end
+
+"""Put two gate tensors on one device so `ITensors.apply` has a method for them.
+
+Mixed pairs are brought to the **host**, following `to_tiny_kernel_cpu`'s stated
+policy: gate tensors are 2x2 or 4x4, so launch and transfer overhead dominates
+their arithmetic and the host copy is free, while the MPS — the object worth
+keeping resident — is untouched. Matching pairs are returned unchanged, so a
+fully device-resident compose stays on the device and the CPU path is bit-identical.
+"""
+function _align_gate_storage(left_tensor::ITensors.ITensor, right_tensor::ITensors.ITensor)
+    _storage_wrapper(left_tensor) === _storage_wrapper(right_tensor) &&
+        return left_tensor, right_tensor
+    return _to_host_tensor(left_tensor), _to_host_tensor(right_tensor)
+end
+
 """
     compose(left::AbstractGate, right::AbstractGate)
 
 Compose two gates in the same way `ITensors.apply` composes the underlying ITensors.
+
+Gates whose tensors sit on different devices are aligned first. ITensors dispatches
+contraction on storage type and a host/device pair has no method: it fails deep
+inside NDTensors as `no constructors have been defined for DenseArray{Float64, 4}`,
+which names neither gate nor call site. The pair arises in ordinary use —
+`apply_single_qubit_rotations!` promotes its single-qubit layer to `backend_of(mps)`,
+while every gate from `truncated_preparation_circuit` is built through
+`ITensors.matrix` and a LAPACK QR and is therefore always on the host. On a
+device-resident MPS that combination is hit once per analytic layer.
 """
 function compose(left::AbstractGate, right::AbstractGate)
-    composed_tensor = ITensors.apply(tensor(left), tensor(right))
+    left_tensor, right_tensor = _align_gate_storage(tensor(left), tensor(right))
+    composed_tensor = ITensors.apply(left_tensor, right_tensor)
     # collate the site numbers and indices, incl duplicates
     known_indices = vcat(left.site_indices, right.site_indices)
     known_sites = vcat(left.site_numbers, right.site_numbers)
