@@ -26,11 +26,16 @@ function _to_backend_gpu(tensor::ITensors.ITensor; precision::Symbol=:fp32)
 	return _itensor_to_backend(tensor; precision=precision, to_gpu=true)
 end
 
+# Mirrors `_to_backend_cpu(::MPS)`: a per-site rebuild widens the orthogonality
+# limits, so restore them or the transfer to the device changes truncation downstream.
 function _to_backend_gpu(mps::ITensorMPS.MPS; precision::Symbol=:fp32)
 	converted = deepcopy(mps)
+	left_limit, right_limit = ITensorMPS.leftlim(converted), ITensorMPS.rightlim(converted)
 	for n in 1:length(converted)
 		converted[n] = _to_backend_gpu(converted[n]; precision=precision)
 	end
+	ITensorMPS.setleftlim!(converted, left_limit)
+	ITensorMPS.setrightlim!(converted, right_limit)
 	return converted
 end
 

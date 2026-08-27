@@ -163,11 +163,29 @@ function _to_backend_cpu(tensor::ITensors.ITensor; precision::Symbol=:preserve)
     return ITensors.itensor(cast_array, inds...)
 end
 
+"""
+Rebuilding an MPS site-by-site loses its gauge bookkeeping: `setindex!` on an
+`ITensorMPS.MPS` conservatively widens `llim`/`rlim`, so after the loop the state
+reports itself as non-canonical even though not one number has changed. That matters
+because `ITensorMPS.apply` reads those limits to decide where to orthogonalize and
+truncate — drop them and a transfer that should be a pure relocation silently perturbs
+every downstream truncation (measured: 5.7e-4 relative on a swept 3x3 infidelity).
+`deepcopy` already carried the correct limits, so capture them and put them back.
+
+The restored limits are exactly truthful whenever the rebuild preserves every number,
+which is the `precision=:preserve` case this codebase's fp64 runs use. Under an
+`:fp32` cast the isometries hold only to fp32, so the limits are as approximate as the
+cast itself — still a better claim than "non-canonical", which would only buy a
+re-orthogonalization of already-truncated data.
+"""
 function _to_backend_cpu(mps::ITensorMPS.MPS; precision::Symbol=:preserve)
     converted = deepcopy(mps)
+    left_limit, right_limit = ITensorMPS.leftlim(converted), ITensorMPS.rightlim(converted)
     for n in 1:length(converted)
         converted[n] = _to_backend_cpu(converted[n]; precision=precision)
     end
+    ITensorMPS.setleftlim!(converted, left_limit)
+    ITensorMPS.setrightlim!(converted, right_limit)
     return converted
 end
 
