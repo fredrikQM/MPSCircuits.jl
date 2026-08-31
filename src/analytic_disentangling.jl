@@ -208,20 +208,69 @@ end
 
 
 """
-    apply_single_qubit_rotations!(circuit::Vector{UnitaryGate}, mps::ITensorMPS.MPS)
+    single_qubit_frame(mps::ITensorMPS.MPS) -> (layer::Vector{UnitaryGate}, fidelity::Float64)
 
-Apply single-qubit gates to the first layer of `circuit` to fix up the final product state if necessary.
-This is because the disentangling to χ=1 might produce a product state that isn't |00...0>.
-Returns the fidelity of the final product state with the original MPS.
+The product-frame fixup for `mps`, returned as a standalone single-qubit layer rather than
+composed into anything. Ran's two-qubit layers drive the state to *a* product state, not
+necessarily |00...0>, so a final layer of one-qubit gates carries |00...0> into that frame.
+
+Returns the layer and the fidelity of the χ=1 truncation with `mps`.
+
+Front-of-circuit gates are applied last in the disentangling pass (`evaluate_circuit_fidelity`
+walks `circuit[end:-1:1]`), so `vcat(layer, circuit)` places this as the final fixup — see
+[`with_single_qubit_rotations`](@ref).
 """
-function apply_single_qubit_rotations!(circuit::Vector{UnitaryGate}, mps::ITensorMPS.MPS)
+function single_qubit_frame(mps::ITensorMPS.MPS)
     product_mps = ITensorMPS.truncate(mps; maxdim=1) # truncate down to a product state forcibly
     product_truncation_fidelity = abs2(ITensorMPS.inner(product_mps, mps) / ITensorMPS.inner(mps, mps)) # how much fidelity do we preserve dropping to χ=1? should be near 1 if this is to work properly...
     single_qubit_layer = [product_state_site_gate(product_mps, n) for n in 1:length(product_mps)]
     target_backend = backend_of(mps)
     single_qubit_layer = to_backend(single_qubit_layer, target_backend; precision=:preserve)
+    return (single_qubit_layer, product_truncation_fidelity)
+end
+
+
+"""
+    with_single_qubit_rotations(circuit::Vector{UnitaryGate}, mps::ITensorMPS.MPS)
+        -> (framed::Vector{UnitaryGate}, fidelity::Float64)
+
+Non-mutating counterpart of [`apply_single_qubit_rotations!`](@ref): returns a NEW circuit
+carrying the product-frame fixup for `mps`, leaving `circuit` untouched.
+
+**Use this, not the mutating form, anywhere the circuit is still being accumulated.**
+`apply_single_qubit_rotations!` composes the fixup into `circuit[1:N-1]`, i.e. the FRONT of
+the vector — which, after a `prepend!`, is the layer that was just added. Calling it once per
+layer therefore leaves one stale fixup buried inside the circuit per iteration, and the
+assembled circuit is no longer the algorithm's `U_D'...U_1'|0>` (arXiv:1908.07958 Eq. 12).
+The mutating form is correct only when called exactly once, after the layer loop has finished
+(see `compilers.jl`).
+
+The returned circuit carries `length(mps)` extra single-qubit gates at the front. Two-qubit
+gate counts are unaffected; count with `count_two_qubit`, never `length`.
+"""
+function with_single_qubit_rotations(circuit::Vector{UnitaryGate}, mps::ITensorMPS.MPS)
+    single_qubit_layer, product_truncation_fidelity = single_qubit_frame(mps)
+    return (vcat(single_qubit_layer, circuit), product_truncation_fidelity)
+end
+
+
+"""
+    apply_single_qubit_rotations!(circuit::Vector{UnitaryGate}, mps::ITensorMPS.MPS)
+
+Apply single-qubit gates to the first layer of `circuit` to fix up the final product state if necessary.
+This is because the disentangling to χ=1 might produce a product state that isn't |00...0>.
+Returns the fidelity of the final product state with the original MPS.
+
+!!! warning "Call at most once per circuit"
+    This mutates `circuit` in place, composing the fixup into its FRONT gates. Calling it
+    again after more layers have been prepended does not replace the earlier fixup — it adds
+    a second one and strands the first mid-circuit, silently corrupting the result. Inside a
+    layer loop use [`with_single_qubit_rotations`](@ref) instead.
+"""
+function apply_single_qubit_rotations!(circuit::Vector{UnitaryGate}, mps::ITensorMPS.MPS)
+    single_qubit_layer, product_truncation_fidelity = single_qubit_frame(mps)
     circuit[1] = compose(circuit[1], single_qubit_layer[1])
-    for qubit in 2:length(product_mps)
+    for qubit in 2:length(single_qubit_layer)
         circuit[qubit-1] = compose(circuit[qubit-1], single_qubit_layer[qubit])
     end
     return product_truncation_fidelity

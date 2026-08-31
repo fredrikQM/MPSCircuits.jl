@@ -107,6 +107,21 @@ end
 Extract a preparation circuit from an MPS by analytic disentangling and layer optimization.
 This adds new layers and then optimizes -all- layers after each addition.
 This is the `Iter[D_i O_all]` procedure from arXiv:2209.00595 and is typically the best option (albeit expensive).
+
+!!! note "Why the in-loop `apply_single_qubit_rotations!` is safe *here*"
+    Calling that function once per layer normally corrupts a circuit: it composes the
+    product-frame fixup into the FRONT of the vector, which after `prepend!` is the layer
+    just added, so each iteration strands the previous fixup mid-circuit. That is fatal
+    wherever the circuit is scored without being fully re-optimized.
+
+    This compiler is the exception: `replace_gates!` re-optimizes **every** gate after every
+    layer, so a composed fixup is only a warm start — the optimizer overwrites it, and the
+    result is a valid circuit whose fidelity is genuine. It is also the only way the frame's
+    degrees of freedom get optimized at all, because `replace_gates!` requires two-site gates
+    and cannot act on a standalone single-qubit layer.
+
+    Anywhere the circuit is *not* fully re-optimized at every checkpoint — in particular at
+    zero sweeps — use `with_single_qubit_rotations` instead and keep the accumulator pure.
 """
 function compile_mps_circuit(
     mps::ITensorMPS.MPS,
